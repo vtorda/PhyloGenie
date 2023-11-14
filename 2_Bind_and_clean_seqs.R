@@ -44,22 +44,23 @@ for(i in 1:length(files)){
   all_fasta <- c(all_fasta, temp_fasta)
 }
 
-all_fasta[2]
-
 length(names(all_fasta)) == length(unique(names(all_fasta))) 
 # checking for duplicates
 length(names(all_fasta))
 length(unique(names(all_fasta)))
-# yes there are some duplicated accessions. We'll take unique only
+# yes there are some duplicated accessions. Remove duplicated ones to give fasta2
 all_fasta <- all_fasta[!duplicated(names(all_fasta))]
 sum(str_detect(sapply(all_fasta, function(x) attr(x, "Annot")), "genome"))
 idx <- str_detect(sapply(all_fasta, function(x) attr(x, "Annot")), "genome")
 all_fasta2 <- all_fasta[!idx]
-all_fasta3 <- all_fasta2[nchar(all_fasta2) >= 200 & nchar(all_fasta2) <= 5000] # filter out super small or super long sequences
 
+# filter out sequences shorter than 200bp and more than 5000bp to give fasta3
+all_fasta3 <- all_fasta2[nchar(all_fasta2) >= 200 & nchar(all_fasta2) <= 5000] 
 setwd(path_input)
 names(all_fasta3) <- sapply(all_fasta3, function(x) attr(x, "Annot"))
 names(all_fasta3) <- str_remove(names(all_fasta3), ">")
+
+# save filtered sequences, specify your own path
 write.fasta(sequences = all_fasta3, 
             names = names(all_fasta3), 
             file.out = "./Available_Seqs_filtered.fasta") 
