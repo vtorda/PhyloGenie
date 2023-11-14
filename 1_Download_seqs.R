@@ -34,8 +34,8 @@ package.setup <- function() {
   set_entrez_key(api_key)
 }
 package.setup() # one function to install and load all required packages & libraries & set API key (N.B. don't share your key)
-setwd("/Users/emilyhodgson/Documents/Autophylo/")
-path_to_output_dir <- "/Users/emilyhodgson/Documents/Autophylo/Available_Seqs/"
+setwd("/Users/emilyhodgson/Documents/Autophylo/")  # change the path for your own use
+path_to_output_dir <- "/Users/emilyhodgson/Documents/Autophylo/Available_Seqs/"  # again change this path for own use
 
 # ADD FUNCTION TO ENVIRONMENT
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
@@ -76,7 +76,7 @@ single_attempt_NCBI_seq_search <- function(search_term) {
                                       entrez_summary(db = "taxonomy", 
                                                      id = i)$scientificname))}
       }
-      fasta <- str_split(all_recs_list, pattern = "\n")
+      fasta <- str_split(all_recs_list, pattern = "\n")  # this step is to store the output for easier extraction 
       if(isEmpty(fasta) == FALSE) {
         names_v <- vector()
         fasta_list <- list()
