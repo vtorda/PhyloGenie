@@ -9,38 +9,18 @@
 ## Personal API key (increases your e-utils limit to 10 requests/second)
 ## List of genera (I used csv file)
 
-# SETUP
-package.setup <- function() {
-  if (!require("rentrez", quietly = TRUE)){
-    install.packages("rentrez")
-  } 
-  if (!require("seqinr", quietly = TRUE)){
-    install.packages("seqinr")
-  }
-  if (!require("stringr", quietly = TRUE)){
-    install.packages("stringr")
-  }
-  if (!require("BiocManager", quietly = TRUE)){
-    install.packages("BiocManager")
-  }
-  if (!require("Biostrings", quietly = TRUE)){
-    BiocManager::install("Biostrings")
-  }
-  library(rentrez)
-  library(seqinr)
-  library(stringr)
-  library("Biostrings")
-  api_key <- "4bb20e27b9f0e52e14014832f00d2f139a08"
-  set_entrez_key(api_key)
-}
-package.setup() # one function to install and load all required packages & libraries & set API key (N.B. don't share your key)
-setwd("/Users/emilyhodgson/Documents/Autophylo/")  # change the path for your own use
-path_to_output_dir <- "/Users/emilyhodgson/Documents/Autophylo/Available_Seqs/"  # again change this path for own use
+
 
 # ADD FUNCTION TO ENVIRONMENT
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
-single_attempt_NCBI_seq_search <- function(search_term) {
+single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_output_dir) {
+  # set api key within the function
+  if(!is.null(api_key)){
+    set_entrez_key(api_key)
+  }else{
+    warning("Request an API key by registering NCBI to get a faster download!")
+  }
   master_fasta_list <- list()
   r_search <- entrez_search(db = "taxonomy", 
                             term = paste0(search_term, "[subtree]"),
@@ -105,18 +85,6 @@ single_attempt_NCBI_seq_search <- function(search_term) {
   }
   if(length(r_search$ids) == 0) {cat("\nThis genus has 0 accessions in NCBI taxonomy database\n")}
   cat("\n\n", length(fasta_list), " sequences found for ", paste0(search_term), "\n", sep = "")
-  setwd(path_to_output_dir)
-  write.fasta(sequences = fasta_list, names = names(fasta_list), file.out = paste0(search_term, "_available_seqs.fasta"))
-}
-
-# TEST THE FUNCTION WITH A SMALL GENUS
-single_attempt_NCBI_seq_search("Glaziella")
-
-# GET LIST OF GENERA
-setwd("/Users/emilyhodgson/Documents/Autophylo/")
-genera_df <- read.csv(file = 'Otideaceae_genera_list.csv')
-
-# RUN FOR YOUR LIST OF GENERA 
-for(g in genera_df$Genus) {
-  ten_NCBI_seq_search(g)
+  #setwd(path_to_output_dir) it is safer to define path directly when writing out files
+  write.fasta(sequences = fasta_list, names = names(fasta_list), file.out = paste0(path_to_output_dir, "/", search_term, "_available_seqs.fasta"))
 }
