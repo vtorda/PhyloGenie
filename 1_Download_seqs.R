@@ -5,12 +5,18 @@
 
 # I found searching by genus easier & more effective than searching by species.
 
+###
+## ToDO
+## Write a report file out
+
 # Inputs required:
 ## Personal API key (increases your e-utils limit to 10 requests/second)
 ## List of genera (I used csv file)
-
-
-
+# source("RSetup.R")
+# package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
+# search_term <- "Otidea"
+# api_key <- NULL
+# path_to_output_dir <- "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/"
 # ADD FUNCTION TO ENVIRONMENT
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
@@ -26,19 +32,19 @@ single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_
                             term = paste0(search_term, "[subtree]"),
                             retmax = 999, 
                             use_history = TRUE) # gets all IDs for genus
-  cat("\nNumber of ", search_term, " IDs in NCBI taxonomy database: ", length(r_search$ids), "\n")
-  if(length(r_search$ids) != 0) {
+  ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+  cat("\nNumber of ", search_term, " IDs in NCBI taxonomy database: ", ID_n, "\n")
+  if(ID_n != 0) {
       # FETCHING SEQUENCE DATA FOR EVERY ID
       loop <- 1
-      loop_v <- vector()
       all_recs_list <- list()
       unavailable_list <- matrix(ncol = 2)
       colnames(unavailable_list) <- c("Tax_ID", "Skipped_taxa")
-      for (i in r_search$ids) {
-        cat("\nID ", loop, ":\t", i, "\t")
-        loop_v[loop] <- loop
+      for (i in 1:ID_n) {
+        ID <- r_search$ids[i]
+        cat("\nID ", i, ":\t", ID, "\t")
         upload <- entrez_post(db = "taxonomy", 
-                              id = i) # getting the taxonomy with IDs
+                              id = ID) # getting the taxonomy with IDs
         fetch_id <- entrez_link(dbfrom = "taxonomy", 
                                 db = "nuccore", 
                                 web_history = upload) # linking between the nucleotide & taxonomy databases - this is when the inconsistencies come in
@@ -48,43 +54,18 @@ single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_
                                                 id = fetch_id2, 
                                                 rettype = "fasta")
           loop <- loop + 1
-        }
-        if(is.null(fetch_id2)) { 
+        }else{
           cat("no sequence data")
           unavailable_list <- rbind(unavailable_list, 
-                                    c(i, 
+                                    c(ID, 
                                       entrez_summary(db = "taxonomy", 
-                                                     id = i)$scientificname))}
-      }
-      fasta <- str_split(all_recs_list, pattern = "\n")  # this step is to store the output for easier extraction 
-      if(isEmpty(fasta) == FALSE) {
-        names_v <- vector()
-        fasta_list <- list()
-        count <- 1
-        for(i in 1:length(fasta)){
-          fasta_temp <- fasta[[i]]
-          idx <- str_detect(fasta_temp, ">")
-          if(sum(idx) == 1){
-            names_v[count] <- fasta_temp[idx]
-            fasta_list[[count]] <- str_c(fasta_temp[!idx], collapse = "")
-            count <- count + 1
-          }
-          if(sum(idx) > 1){
-            idx2 <- which(idx)
-            idx2 <- c(idx2, length(idx) + 1)
-            j <- 2
-            for(j in 1:(length(idx2) - 1)){
-              names_v[count] <- fasta_temp[idx2[j]]
-              fasta_list[[count]] <- str_c(fasta_temp[(idx2[j] + 1):(idx2[j+1] - 1)], collapse = "")
-              count <- count + 1
-            }
-          }
+                                                     id = ID)$scientificname))
         }
-        names(fasta_list) <- str_sub(names_v, start = 2)
       }
   }
+  n_seq <- sum(str_count(unlist(all_recs_list), ">"))
   if(length(r_search$ids) == 0) {cat("\nThis genus has 0 accessions in NCBI taxonomy database\n")}
-  cat("\n\n", length(fasta_list), " sequences found for ", paste0(search_term), "\n", sep = "")
-  #setwd(path_to_output_dir) it is safer to define path directly when writing out files
-  write.fasta(sequences = fasta_list, names = names(fasta_list), file.out = paste0(path_to_output_dir, "/", search_term, "_available_seqs.fasta"))
+  cat("\n\n", n_seq, " sequences found for ", paste0(search_term), "\n", sep = "")
+  write(unlist(all_recs_list), file = paste0(path_to_output_dir, "/", search_term, "_available_seqs.fasta")) # this can do all the job that the code below did before
 }
+
