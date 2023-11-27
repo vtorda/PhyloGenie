@@ -12,11 +12,13 @@
 # Inputs required:
 ## Personal API key (increases your e-utils limit to 10 requests/second)
 ## List of genera (I used csv file)
-# source("RSetup.R")
-# package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
-# search_term <- "Otidea"
-# api_key <- NULL
-# path_to_output_dir <- "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/"
+source("RSetup.R")
+package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
+search_term <- "Otidea"
+api_key <- NULL
+path_to_output_dir <- "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/"
+
+entrez_db_searchable("taxonomy")
 # ADD FUNCTION TO ENVIRONMENT
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
@@ -27,7 +29,6 @@ single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_
   }else{
     warning("Request an API key by registering NCBI to get a faster download!")
   }
-  master_fasta_list <- list()
   r_search <- entrez_search(db = "taxonomy", 
                             term = paste0(search_term, "[subtree]"),
                             retmax = 999, 
@@ -40,6 +41,7 @@ single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_
       all_recs_list <- list()
       unavailable_list <- matrix(ncol = 2)
       colnames(unavailable_list) <- c("Tax_ID", "Skipped_taxa")
+      i <- 1
       for (i in 1:ID_n) {
         ID <- r_search$ids[i]
         cat("\nID ", i, ":\t", ID, "\t")
@@ -48,6 +50,11 @@ single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_
         fetch_id <- entrez_link(dbfrom = "taxonomy", 
                                 db = "nuccore", 
                                 web_history = upload) # linking between the nucleotide & taxonomy databases - this is when the inconsistencies come in
+        fetch_id2 <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore",
+                                id = ID)
+        fetch_id2$links$taxonomy_nuccore
+        sum_test <- entrez_summary("nuccore", fetch_id2$links$taxonomy_nuccore)
         fetch_id2 <- fetch_id$links$taxonomy_nuccore
         if(!is.null(fetch_id2)) {
           all_recs_list[[loop]] <- entrez_fetch(db = "nuccore",
