@@ -1,0 +1,746 @@
+---
+title: "Compare_download_scripts"
+author: "Torda"
+date: '2023 12 01 '
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+source("RSetup.R")
+package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
+search_term <- "Scutellinia"
+api_key <- "c44d495a98d75bb5c1f09b640c43f40ed308"
+            c44d495a98d75bb5c1f09b640c43f40ed308
+path_to_output_dir <- "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/"
+set_entrez_key(api_key)
+lower <- 400
+upper <- 10000
+```
+
+```{r}
+
+access_ID <- vector()
+fetch_id2 <- vector()
+r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0(search_term, "[subtree]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+upload <- entrez_post(db = "taxonomy", 
+                              id = ID) # Post on NCBI server
+
+link_history <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore",
+                                web_history = upload,
+                                cmd = "neighbor_history") # store neighbor history on NCBI server
+summary_list <- entrez_summary("nuccore",
+                               web_history = link_history$web_histories$taxonomy_nuccore)
+key_info <- lapply(summary_list, function(x) c(x$uid, x$oslt$value, x$slen))
+
+# unique NCBI accession numbers for Scutellinia
+length(unique(lapply(key_info, function(x) x[2])))
+hist(sapply(key_info, function(x) as.numeric(x[3])), main = "Length distribution of Scuttelinia noccure sequences", xlab = "bp")
+```
+Download sequences following entrez tutorial
+```{r}
+max_seq <- length(key_info)
+for( seq_start in seq(1,max_seq,50)){
+    recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                         rettype="fasta", retmax=50, retstart=seq_start)
+    cat(recs, file="./TestFolder/Scutellinia.fasta", append=TRUE)
+    cat(seq_start+49, "sequences downloaded\r")
+}
+```
+#### Original script
+
+```{r}
+ten_NCBI_seq_search <- function(search_term) {
+  master_fasta_list <- list()
+  r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0(search_term, "[subtree]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+  cat("\nNumber of ", search_term, " IDs in NCBI taxonomy database: ", length(r_search$ids), "\n")
+  if(length(r_search$ids) != 0) {
+    for(k in 1:10){
+      cat("\n\nAttempt: ", k, sep = "")
+      # FETCHING SEQUENCE DATA FOR EVERY ID
+      loop <- 1
+      loop_v <- vector()
+      all_recs_list <- list()
+      unavailable_list <- matrix(ncol = 2)
+      colnames(unavailable_list) <- c("Tax_ID", "Skipped_taxa")
+      for (i in r_search$ids) {
+        cat("\nID ", loop, ":\t", i, "\t")
+        loop_v[loop] <- loop
+        upload <- entrez_post(db = "taxonomy", 
+                              id = i) # getting the taxonomy with IDs
+        fetch_id <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore", 
+                                web_history = upload) # linking between the nucleotide & taxonomy databases - this is when the inconsistencies come in
+        fetch_id2 <- fetch_id$links$taxonomy_nuccore
+        if(!is.null(fetch_id2)) {
+          all_recs_list[[loop]] <- entrez_fetch(db = "nuccore",
+                                                id = fetch_id2, 
+                                                rettype = "fasta")
+          loop <- loop + 1
+        }
+        if(is.null(fetch_id2)) { 
+          cat("no sequence data")
+          unavailable_list <- rbind(unavailable_list, 
+                                    c(i, 
+                                      entrez_summary(db = "taxonomy", 
+                                                     id = i)$scientificname))}
+      }
+      fasta <- str_split(all_recs_list, pattern = "\n")
+      if(isEmpty(fasta) == FALSE) {
+        names_v <- vector()
+        fasta_list <- list()
+        count <- 1
+        for(i in 1:length(fasta)){
+          fasta_temp <- fasta[[i]]
+          idx <- str_detect(fasta_temp, ">")
+          if(sum(idx) == 1){
+            names_v[count] <- fasta_temp[idx]
+            fasta_list[[count]] <- str_c(fasta_temp[!idx], collapse = "")
+            count <- count + 1
+          }
+          if(sum(idx) > 1){
+            idx2 <- which(idx)
+            idx2 <- c(idx2, length(idx) + 1)
+            j <- 2
+            for(j in 1:(length(idx2) - 1)){
+              names_v[count] <- fasta_temp[idx2[j]]
+              fasta_list[[count]] <- str_c(fasta_temp[(idx2[j] + 1):(idx2[j+1] - 1)], collapse = "")
+              count <- count + 1
+            }
+          }
+        }
+        names(fasta_list) <- str_sub(names_v, start = 2)
+        master_fasta_list[[k]] <- fasta_list
+      }
+    }
+  }
+  if(length(r_search$ids) == 0) {cat("\nThis genus has 0 accessions in NCBI taxonomy database\n")}
+  unlisted_master_fasta <- unlist(master_fasta_list, 
+                                  recursive = FALSE, 
+                                  use.names = TRUE) 
+  unique_master_fasta <- unlisted_master_fasta[!duplicated(names(unlisted_master_fasta))] # getting unique sequences only
+  cat("\n\n", length(unique_master_fasta), " sequences found for ", paste0(search_term), "\n", sep = "")
+  setwd(path_to_output_dir)
+  write.fasta(sequences = unique_master_fasta, names = names(unique_master_fasta), file.out = paste0(search_term, "_available_seqs.fasta"))
+}
+```
+
+
+```{r}
+ten_NCBI_seq_search("Scutellinia")
+```
+
+compare the two lists
+
+```{r}
+original_fasta <- read.fasta("./TestFolder/Scutellinia_available_seqs.fasta")
+new_fasta <- read.fasta("./TestFolder/Scutellinia.fasta")
+```
+
+```{r}
+origianl_names <- names(original_fasta)
+new_names <- names(new_fasta)
+idx <- origianl_names %in% new_names
+sum(idx)
+original_fasta[!idx]
+sum(!idx)
+```
+
+I am missing 8 sequences...
+
+What if I repeat the search 10 times
+```{r}
+r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0(search_term, "[subtree]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+upload <- entrez_post(db = "taxonomy", 
+                              web_history = r_search$web_history) # Post on NCBI server
+
+link_history <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore",
+                                web_history = upload,
+                                cmd = "neighbor_history") # store neighbore history on NCBI server
+summary_list_v2 <- entrez_summary("nuccore",
+                               web_history = link_history$web_histories$taxonomy_nuccore)
+
+key_info2 <- lapply(summary_list_v2, function(x) c(x$uid, x$oslt$value, x$slen))
+
+# unique NCBI accession numbers for Scutellinia
+length(unique(lapply(key_info2, function(x) x[2])))
+hist(sapply(key_info2, function(x) as.numeric(x[3])), main = "Length distribution of Scuttelinia noccure sequences", xlab = "bp")
+```
+
+
+```{r}
+max_seq <- length(key_info2)
+for( seq_start in seq(1,max_seq,50)){
+    recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                         rettype="fasta", retmax=50, retstart=seq_start)
+    cat(recs, file="./TestFolder/Scutellinia_v2.fasta", append=TRUE)
+    cat(seq_start+49, "sequences downloaded\r")
+}
+```
+
+compare the two lists
+
+```{r}
+original_fasta <- read.fasta("./TestFolder/Scutellinia_available_seqs.fasta")
+new_fasta2 <- read.fasta("./TestFolder/Scutellinia_v2.fasta")
+```
+
+```{r}
+origianl_names <- names(original_fasta)
+new_names <- names(new_fasta2)
+idx <- origianl_names %in% new_names
+sum(idx)
+original_fasta[!idx]
+sum(!idx)
+```
+
+
+# test the whole with otidea
+
+```{r}
+search_term <- "Otidea"
+```
+
+Otidea is not working because: "Error: No esummary records found in file" when I call entrez_summary
+Then I try to link each id separately
+
+
+```{r}
+r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0(search_term, "[subtree]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+
+i <- 39
+for(i in 1:ID_n){
+cat("\nID ", i, ":\t", ID[i], "\t")
+upload <- entrez_post(db = "taxonomy", 
+                              id = ID[i]) 
+
+link_history <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore",
+                                web_history = upload,
+                                cmd = "neighbor_history") # store neighbor history on NCBI server in other words I don't download the linked IDs but store them as a web history
+if(!is.null(link_history$web_histories$taxonomy_nuccore)){
+  summary_result <- entrez_summary("nuccore", web_history = link_history$web_histories$taxonomy_nuccore)
+  if(names(summary_result)[1] == "uid"){ # with this I check if I have just 1 sequence, so the first element should be "uid", if not, multiple records need to be downloaded
+    key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+    recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                             rettype="fasta")
+    cat(recs, file="./TestFolder/Otidea_loop.fasta", append=TRUE)
+  }else{
+    key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+    max_seq <- length(key_info2)
+    seq_start <- seq(1,max_seq,50)
+    batch_n <- length(seq_start)
+    for(j in 1:batch_n){
+      
+        recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                             rettype="fasta", retmax=50, retstart=seq_start[j])
+        cat(recs, file="./TestFolder/Otidea_loop.fasta", append=TRUE)
+        if(j < batch_n){
+          cat("\n",seq_start[j]+49, "sequences downloaded\r")
+        }else{
+          cat("\n", max_seq, "sequences downloaded\r")
+        }
+    }
+  }
+}else{
+    cat("\n#\n#The following taxon does not have data in the nuccore db:\n",entrez_fetch(db="taxonomy", id = ID[i], rettype = "text"))
+  }
+}
+```
+ how many sequences has been dowloaded?
+ 
+```{r}
+seqs <- read.fasta("./TestFolder/Otidea_loop.fasta")
+length(seqs)
+# if I search for Otidea online I got 1290 hits: I am missing 125 sequences
+```
+
+
+
+```{r}
+
+# ID 25 and 95 had no sequence in the database
+entrez_db_searchable("taxonomy")
+cat(entrez_fetch(db="taxonomy", id = ID[25], rettype = "text"))
+link_history$file
+entrez_db_summary("nucleotide")
+entrez_db_summary("nuccore")
+entrez_db_searchable("nucleotide")
+entrez_db_searchable("nuccore")
+link_history$web_histories$taxonomy_nucleotide_exp
+summary_result <- entrez_summary("nuccore", web_history = link_history$web_histories$taxonomy_nucleotide_exp)
+
+link_history$web_histories$
+```
+
+```{r}
+ recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nucleotide_exp,
+                             rettype="fasta", retmax=50, retstart=0)
+
+ recs <- entrez_fetch(db="protein", web_history=link_history$web_histories$taxonomy_nucleotide_exp,
+                             rettype="fasta")
+ 
+ 
+ fetch_id <- entrez_link(dbfrom = "taxonomy", 
+                                db = "protein",
+                                id = ID[25])
+ 
+ fetch_id$links$taxonomy_protein_exp
+summary_list <- entrez_summary("nuccore", fetch_id$links$taxonomy_protein_exp)
+
+ recs <- entrez_fetch(db="nuccore", id = fetch_id$links$taxonomy_nucleotide_exp,
+                             rettype="fasta")
+```
+```{r}
+entrez_db_searchable("taxonomy") 
+recs <- entrez_fetch(db="taxonomy", id = ID[25],
+                             rettype="text")
+
+sumarry_25 <- entrez_summary("taxonomy", id = ID[25])
+all_the_links <- entrez_link(dbfrom='taxonomy', id=ID[25], db='all')
+ID25_ids <- all_the_links$links$taxonomy_taxonomy_child
+all_the_links$links$taxonomy_nucleotide_exp
+all_the_links$links$taxonomy_taxonomy_child
+
+summary_list <- entrez_summary("", id = all_the_links$links$taxonomy_nucleotide_exp)
+```
+
+```{r}
+all_the_links <- entrez_link(dbfrom='taxonomy', id=ID[25], db='all')
+ID25_ids <- all_the_links$links$taxonomy_taxonomy_child
+ID_n2 <- length(ID25_ids) # reducing repetitions by reusing this variable
+ID2 <- r_search$ids
+
+
+for(i in 1:ID_n2){
+cat("\nID ", i, ":\t", ID2[i], "\t")
+upload <- entrez_post(db = "taxonomy", 
+                              id = ID2[i]) 
+
+link_history <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore",
+                                web_history = upload,
+                                cmd = "neighbor_history") # store neighbor history on NCBI server
+if(!is.null(link_history$web_histories$taxonomy_nuccore)){
+  summary_result <- entrez_summary("nuccore", web_history = link_history$web_histories$taxonomy_nuccore)
+  if(names(summary_result)[1] == "uid"){
+    key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+    recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                             rettype="fasta")
+    cat(recs, file="./TestFolder/Otidea_loop_n25.fasta", append=TRUE)
+  }else{
+    key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+    max_seq <- length(key_info2)
+    seq_start <- seq(1,max_seq,50)
+    batch_n <- length(seq_start)
+    for(j in 1:batch_n){
+      
+        recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                             rettype="fasta", retmax=50, retstart=seq_start[j])
+        cat(recs, file="./TestFolder/Otidea_loop_n25.fasta", append=TRUE)
+        if(j < batch_n){
+          cat("\n",seq_start+49, "sequences downloaded\r")
+        }else{
+          cat("\n", max_seq, "sequences downloaded\r")
+        }
+    }
+  }
+}else{
+    cat("\n#\n#The following taxon does not have data in the nuccore db:\n",entrez_fetch(db="taxonomy", id = ID2[i], rettype = "text"))
+  }
+}
+```
+do the above one for the 95
+
+```{r}
+all_the_links <- entrez_link(dbfrom='taxonomy', id=ID[95], db='all')
+ID25_ids <- all_the_links$links$taxonomy_taxonomy_child
+ID_n2 <- length(ID25_ids) # reducing repetitions by reusing this variable
+ID2 <- r_search$ids
+
+
+for(i in 1:ID_n2){
+cat("\nID ", i, ":\t", ID2[i], "\t")
+upload <- entrez_post(db = "taxonomy", 
+                              id = ID2[i]) 
+
+link_history <- entrez_link(dbfrom = "taxonomy", 
+                                db = "nuccore",
+                                web_history = upload,
+                                cmd = "neighbor_history") # store neighbor history on NCBI server
+if(!is.null(link_history$web_histories$taxonomy_nuccore)){
+  summary_result <- entrez_summary("nuccore", web_history = link_history$web_histories$taxonomy_nuccore)
+  if(names(summary_result)[1] == "uid"){
+    key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+    recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                             rettype="fasta")
+    cat(recs, file="./TestFolder/Otidea_loop_n95.fasta", append=TRUE)
+  }else{
+    key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+    max_seq <- length(key_info2)
+    seq_start <- seq(1,max_seq,50)
+    batch_n <- length(seq_start)
+    for(j in 1:batch_n){
+      
+        recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                             rettype="fasta", retmax=50, retstart=seq_start[j])
+        cat(recs, file="./TestFolder/Otidea_loop_n95.fasta", append=TRUE)
+        if(j < batch_n){
+          cat("\n",seq_start+49, "sequences downloaded\r")
+        }else{
+          cat("\n", max_seq, "sequences downloaded\r")
+        }
+    }
+  }
+}else{
+    cat("\n#\n#The following taxon does not have data in the nuccore db:\n",entrez_fetch(db="taxonomy", id = ID2[i], rettype = "text"))
+  }
+}
+```
+```{r}
+seq_95 <- read.fasta("./TestFolder/Otidea_loop_n95.fasta")
+seq_25 <- read.fasta("./TestFolder/Otidea_loop_n25.fasta")
+all(names(seq_95) %in% names(seqs))
+all(names(seqs) %in% names(seq_95))
+# n_95 is the same as the original
+all(names(seq_25) %in% names(seqs))
+# and the n25 is the same as the original
+```
+I might find the missing ones in the popset database??
+PopSet
+The PopSet database contains related nucleotide sequences that originate from comparative studies: phylogenetic, population, environmental (ecosystem), and mutational. Each record in the database is a set of nucleotide sequences representing the same molecule from the same species (population, mutation), different identifiable species (phylogenetic), or anonymous species from the same biological community (ecosystem).
+
+
+```{r}
+r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0(search_term, "[subtree]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+
+# i <- 66
+for(i in 1:ID_n){
+taxon <- entrez_fetch(db="taxonomy", id = ID[i], rettype = "text")
+cat("\nID ", i, ":\t", ID[i], "\t", taxon, "\t")
+upload <- entrez_post(db = "taxonomy", 
+                              id = ID[i]) 
+
+link_history <- entrez_link(dbfrom = "taxonomy", 
+                                db = "popset",
+                                web_history = upload,
+                                cmd = "neighbor_history") # store neighbor history on NCBI server in other words I don't download the linked IDs but store them as a web history
+if(!is.null(link_history$web_histories$taxonomy_popset)){
+  summary_result <- entrez_summary("popset", web_history = link_history$web_histories$taxonomy_popset)
+  if(names(summary_result)[1] == "uid"){ # with this I check if I have just 1 sequence, so the first element should be "uid", if not, multiple records need to be downloaded
+    key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+    recs <- entrez_fetch(db="popset", web_history=link_history$web_histories$taxonomy_popset,
+                             rettype="fasta")
+    cat(recs, file="./TestFolder/Otidea_loop_popset.fasta", append=TRUE)
+  }else{
+    key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+    max_seq <- length(key_info2)
+    seq_start <- seq(1,max_seq,50)
+    batch_n <- length(seq_start)
+    for(j in 1:batch_n){
+      
+        recs <- entrez_fetch(db="popset", web_history=link_history$web_histories$taxonomy_popset,
+                             rettype="fasta", retmax=50, retstart=seq_start[j])
+        cat(recs, file="./TestFolder/Otidea_loop_popset.fasta", append=TRUE)
+        if(j < batch_n){
+          cat("\n",seq_start[j]+49, "sequences downloaded\r")
+        }else{
+          cat("\n", max_seq, "sequences downloaded\r")
+        }
+    }
+  }
+}else{
+    cat("\n#\n#This  taxon does not have data in the popset db\n")
+  }
+}
+```
+"Otidea"[Organism] OR Otidea[All Fields]
+
+```{r}
+set_entrez_key(api_key)
+r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0("\"", search_term, "\"", "[Organism] OR ",
+                                          search_term, "[All Fields]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+
+
+for(i in 1:ID_n){
+taxon <- entrez_fetch(db="taxonomy", id = ID[i], rettype = "text")
+taxon <- unlist(str_split(taxon, "\n"))[1]
+cat("\nID ", i, ":\t", ID[i], "\t", taxon, "\t")
+if(!str_detect(taxon, "uncultured")){
+  upload <- entrez_post(db = "taxonomy", 
+                                id = ID[i]) 
+  
+  link_history <- entrez_link(dbfrom = "taxonomy", 
+                                  db = "nuccore",
+                                  web_history = upload,
+                                  cmd = "neighbor_history") # store neighbor history on NCBI server in other words I don't download the linked IDs but store them as a web history
+  if(!is.null(link_history$web_histories$taxonomy_nuccore)){
+    summary_result <- entrez_summary("nuccore", 
+                                     web_history = link_history$web_histories$taxonomy_nuccore)
+    if(names(summary_result)[1] == "uid"){ # with this I check if I have just 1 sequence, so the first element should be "uid", if not, multiple records need to be downloaded
+      key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+      recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                               rettype="fasta")
+      cat(recs, file="./TestFolder/Otidea_loop5.fasta", append=TRUE)
+    }else{
+      key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+      max_seq <- length(key_info2)
+      seq_start <- seq(1,max_seq,50)
+      batch_n <- length(seq_start)
+      for(j in 1:batch_n){
+        
+          recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                               rettype="fasta", retmax=50, retstart=seq_start[j])
+          cat(recs, file="./TestFolder/Otidea_loop5.fasta", append=TRUE)
+          if(j < batch_n){
+            cat("\n",seq_start[j]+49, "sequences downloaded\r")
+          }else{
+            cat("\n", max_seq, "sequences downloaded\r")
+          }
+      }
+    }
+  }else{
+      cat("\n#\n#This  taxon does not have data in the nuccore db:\n")
+    }
+}else{
+    cat("\n#\n#Skipping uncultured sources db:\n")
+  }
+}
+```
+
+```{r}
+seqs5 <- read.fasta("./TestFolder/Otidea_loop5.fasta")
+extr_id <- names(seqs5)[!names(seqs5) %in% names(seqs)]
+extra_seqs <- seqs5[extr_id]
+write.fasta(extra_seqs, names = getAnnot(extra_seqs), file.out = "./TestFolder/extra_seq.fasta")
+
+
+extr_id2 <- names(seqs5)[!names(seqs) %in% names(seqs5)]
+```
+
+
+```{r}
+NCBI_search <- read.fasta("./TestFolder/sequence.fasta")
+extr_id <- names(NCBI_search)[!names(NCBI_search) %in% names(seqs)]
+extra_seqs <- NCBI_search[extr_id]
+write.fasta(extra_seqs, names = getAnnot(extra_seqs), file.out = "./TestFolder/extra_seq.fasta")
+```
+
+
+```{r}
+recs <- entrez_fetch(db="nuccore", id = "NR_182423",
+                               rettype="fasta")
+```
+
+Otidea shennongjiana
+
+```{r}
+set_entrez_key(api_key)
+r_search <- entrez_search(db = "taxonomy", 
+                            term = "Otidea shennongjiana",
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+
+i <- 1
+for(i in 1:ID_n){
+taxon <- entrez_fetch(db="taxonomy", id = ID[i], rettype = "text")
+taxon <- unlist(str_split(taxon, "\n"))[1]
+cat("\nID ", i, ":\t", ID[i], "\t", taxon, "\t")
+if(!str_detect(taxon, "uncultured")){
+  upload <- entrez_post(db = "taxonomy", 
+                                id = ID[i]) 
+  
+  link_history <- entrez_link(dbfrom = "taxonomy", 
+                                  db = "nuccore",
+                                  web_history = upload,
+                                  cmd = "neighbor_history") # store neighbor history on NCBI server in other words I don't download the linked IDs but store them as a web history
+  if(!is.null(link_history$web_histories$taxonomy_nuccore)){
+    summary_result <- entrez_summary("nuccore", 
+                                     web_history = link_history$web_histories$taxonomy_nuccore)
+    if(names(summary_result)[1] == "uid"){ # with this I check if I have just 1 sequence, so the first element should be "uid", if not, multiple records need to be downloaded
+      key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+      recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                               rettype="fasta")
+      cat(recs, file="./TestFolder/Otidea_loop5.fasta", append=TRUE)
+    }else{
+      key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+      max_seq <- length(key_info2)
+      seq_start <- seq(1,max_seq,50)
+      batch_n <- length(seq_start)
+      for(j in 1:batch_n){
+        
+          recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                               rettype="fasta", retmax=50, retstart=seq_start[j]-1)
+          cat(recs, file="./TestFolder/Otidea_shennongjiana.fasta", append=TRUE)
+          if(j < batch_n){
+            cat("\n",seq_start[j]+49, "sequences downloaded\r")
+          }else{
+            cat("\n", max_seq, "sequences downloaded\r")
+          }
+      }
+    }
+  }else{
+      cat("\n#\n#This  taxon does not have data in the nuccore db:\n")
+    }
+}else{
+    cat("\n#\n#Skipping uncultured sources db:\n")
+  }
+}
+```
+ok akkor a lenyeg hogy 1 szekivel mindig kevesebb volt amikor tobb szekvencia tartozott 1 fajhoz a 0 indexing miatt
+
+```{r}
+#set_entrez_key("ce946cc5385e86927f230c4aea4a5f68ac08")
+r_search <- entrez_search(db = "taxonomy", 
+                            term = paste0(search_term, "[subtree]"),
+                            retmax = 999, 
+                            use_history = TRUE) # gets all IDs for genus
+ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
+ID <- r_search$ids
+
+i <- 1
+for(i in 1:ID_n){
+taxon <- entrez_fetch(db="taxonomy", id = ID[i], rettype = "text")
+taxon <- unlist(str_split(taxon, "\n"))[1]
+cat("\nID ", i, ":\t", ID[i], "\t", taxon, "\t")
+if(!str_detect(taxon, "uncultured")){ # I have used a term search in entrez_search that had an uncultured result, but it gave me 9999 sequences that now of them had Otidea in their name.. so I avoid uncultured sequences for now
+  upload <- entrez_post(db = "taxonomy", 
+                                id = ID[i]) 
+  
+  link_history <- entrez_link(dbfrom = "taxonomy", 
+                                  db = "nuccore",
+                                  web_history = upload,
+                                  cmd = "neighbor_history") # store neighbor history on NCBI server in other words I don't download the linked IDs but store them as a web history
+  if(!is.null(link_history$web_histories$taxonomy_nuccore)){
+    summary_result <- entrez_summary("nuccore", 
+                                     web_history = link_history$web_histories$taxonomy_nuccore)
+    if(names(summary_result)[1] == "uid"){ # with this I check if I have just 1 sequence, so the first element should be "uid", if not, multiple records need to be downloaded
+      key_info <- c(summary_result$uid, summary_result$oslt$value, summary_result$slen)
+      recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                               rettype="fasta")
+      cat(recs, file="./TestFolder/Otidea_loop6.fasta", append=TRUE)
+    }else{
+      key_info2 <- lapply(summary_result, function(x) c(x$uid, x$oslt$value, x$slen))
+      max_seq <- length(key_info2)
+      seq_start <- seq(1,max_seq,50)
+      batch_n <- length(seq_start)
+      for(j in 1:batch_n){
+        
+          recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                               rettype="fasta", retmax=50, retstart=seq_start[j]-1)
+          cat(recs, file="./TestFolder/Otidea_loop6.fasta", append=TRUE)
+          if(j < batch_n){
+            cat("\n",seq_start[j]+49, "sequences downloaded\r")
+          }else{
+            cat("\n", max_seq, "sequences downloaded\r")
+          }
+      }
+    }
+  }else{
+      cat("\n#\n#This  taxon does not have data in the nuccore db:\n")
+    }
+}else{
+    cat("\n#\n#Skipping uncultured sources db:\n")
+  }
+}
+```
+
+```{r}
+seqs6 <- read.fasta("./TestFolder/Otidea_loop6.fasta")
+extr_id <- names(NCBI_search)[!names(NCBI_search) %in% names(seqs6)]
+extra_seqs <- NCBI_search[extr_id]
+write.fasta(extra_seqs, names = getAnnot(extra_seqs), file.out = "./TestFolder/extra_seq2.fasta")
+
+# compare to popset
+postet <- read.fasta("./TestFolder/Otidea_loop_popset.fasta")
+extr_id2 <- names(extra_seqs)[!names(extra_seqs) %in% names(postet)]
+### I couldn't find extra the missing 52 sequences in the popset data
+
+otidea_popset <- names(postet)[str_detect(getAnnot(postet), "Otidea")]
+otdea_popset_seq <- postet[otidea_popset]
+write.fasta(otdea_popset_seq, names = getAnnot(otdea_popset_seq), file.out = "./TestFolder/otidea_popset.fasta")
+uniques <- unique(names(otdea_popset_seq))
+extr_id3 <- names(otdea_popset_seq)[!names(otdea_popset_seq) %in% names(seqs6)]
+
+otidea_popset2 <- names(postet)[str_detect(getAnnot(postet), "otidea")]
+
+
+## so in the popset data I can find otidea sequences and a lot of others, but non of them extra or the 52 I am missing...
+
+
+```
+
+
+
+```{r}
+any(unlist(lapply(summary_result, function(x) str_detect(x$TiTle, "Otidea"))))
+any(unlist(lapply(summary_result, function(x) str_detect(x$TiTle, "otidea"))))
+```
+
+
+```{r}
+    max_seq <- 500
+seq_start <- seq(1,max_seq,50)
+    batch_n <- length(seq_start)
+for(j in 1:batch_n){
+      
+        recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nucleotide_exp,
+                             rettype="fasta", retmax=50, retstart=seq_start[j])
+        cat(recs, file="./TestFolder/Otidea_loop2.fasta", append=TRUE)
+        if(j < batch_n){
+          cat("\n",seq_start+49, "sequences downloaded\r")
+        }else{
+          cat("\n", max_seq, "sequences downloaded\r")
+        }
+    }
+```
+
+
+
+```{r}
+link_history$file
+max_seq <- length(key_info2)
+for( seq_start in seq(1,max_seq,50)){
+    recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                         rettype="fasta", retmax=50, retstart=seq_start)
+    cat(recs, file="./TestFolder/Scutellinia_v2.fasta", append=TRUE)
+    cat(seq_start+49, "sequences downloaded\r")
+}
+```
+```
+

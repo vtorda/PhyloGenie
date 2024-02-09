@@ -12,17 +12,19 @@
 # Inputs required:
 ## Personal API key (increases your e-utils limit to 10 requests/second)
 ## List of genera (I used csv file)
-source("RSetup.R")
-package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
-search_term <- "Otidea"
-api_key <- NULL
-path_to_output_dir <- "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/"
+# source("RSetup.R")
+# package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
+# search_term <- "Otidea"
+# api_key <- "NULL"
+# path_to_output_dir <- "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/"
+# # minlength <- 150
+# # maxlength <- 4000
 
-entrez_db_searchable("taxonomy")
+#entrez_db_searchable("taxonomy")
 # ADD FUNCTION TO ENVIRONMENT
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
-single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_output_dir) {
+NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir) {
   # set api key within the function
   if(!is.null(api_key)){
     set_entrez_key(api_key)
@@ -36,43 +38,43 @@ single_attempt_NCBI_seq_search <- function(search_term, api_key = NULL, path_to_
   ID_n <- length(r_search$ids) # reducing repetitions by reusing this variable
   cat("\nNumber of ", search_term, " IDs in NCBI taxonomy database: ", ID_n, "\n")
   if(ID_n != 0) {
-      # FETCHING SEQUENCE DATA FOR EVERY ID
-      loop <- 1
-      all_recs_list <- list()
-      unavailable_list <- matrix(ncol = 2)
-      colnames(unavailable_list) <- c("Tax_ID", "Skipped_taxa")
-      i <- 1
-      for (i in 1:ID_n) {
-        ID <- r_search$ids[i]
-        cat("\nID ", i, ":\t", ID, "\t")
-        upload <- entrez_post(db = "taxonomy", 
-                              id = ID) # getting the taxonomy with IDs
-        fetch_id <- entrez_link(dbfrom = "taxonomy", 
-                                db = "nuccore", 
-                                web_history = upload) # linking between the nucleotide & taxonomy databases - this is when the inconsistencies come in
-        fetch_id2 <- entrez_link(dbfrom = "taxonomy", 
+    # linking all taxid with nuccore data 
+    link_history <- entrez_link(dbfrom = "taxonomy", 
                                 db = "nuccore",
-                                id = ID)
-        fetch_id2$links$taxonomy_nuccore
-        sum_test <- entrez_summary("nuccore", fetch_id2$links$taxonomy_nuccore)
-        fetch_id2 <- fetch_id$links$taxonomy_nuccore
-        if(!is.null(fetch_id2)) {
-          all_recs_list[[loop]] <- entrez_fetch(db = "nuccore",
-                                                id = fetch_id2, 
-                                                rettype = "fasta")
-          loop <- loop + 1
-        }else{
-          cat("no sequence data")
-          unavailable_list <- rbind(unavailable_list, 
-                                    c(ID, 
-                                      entrez_summary(db = "taxonomy", 
-                                                     id = ID)$scientificname))
-        }
+                                web_history = r_search$web_history,
+                                cmd = "neighbor_history")
+    # get the info of all linked noccure records
+    summary_result <- entrez_summary("nuccore", 
+                                     web_history = link_history$web_histories$taxonomy_nuccore, retmode = "xml")
+    meta <- lapply(summary_result, function(x) x[1:27]) # it seems that the first 27 element always the same info
+    #changing NULL to NA https://stackoverflow.com/questions/22870198/is-there-a-more-efficient-way-to-replace-null-with-na-in-a-list
+    nullToNA <- function(x) {
+      x[sapply(x, is.null)] <- NA
+      return(x)
+    }
+    meta2 <- lapply(meta, nullToNA)
+    meta3 <- lapply(meta2, unlist) 
+    meta_df <- as.data.frame(do.call(rbind, meta3))
+    # download sequences in batches using web history data
+    max_seq <- nrow(meta_df)
+    seq_start <- seq(1,max_seq,50)
+    batch_n <- length(seq_start)
+    for(j in 1:batch_n){
+      recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                           rettype="fasta", retmax=50, retstart=seq_start[j]-1)
+      cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
+      if(j < batch_n){
+        cat("\n",seq_start[j]+49, "sequences downloaded\r")
+      }else{
+        cat("\n", max_seq, "sequences downloaded\r")
       }
+    }
+    # write out metadata
+    write.table(x = meta_df, file = paste0(path_to_output_dir, search_term, ".metadata"),
+                quote = FALSE, col.names = TRUE, row.names = FALSE, sep = "\t")
+  }else{
+    warning("No taxon ID was found")
   }
-  n_seq <- sum(str_count(unlist(all_recs_list), ">"))
-  if(length(r_search$ids) == 0) {cat("\nThis genus has 0 accessions in NCBI taxonomy database\n")}
-  cat("\n\n", n_seq, " sequences found for ", paste0(search_term), "\n", sep = "")
-  write(unlist(all_recs_list), file = paste0(path_to_output_dir, "/", search_term, "_available_seqs.fasta")) # this can do all the job that the code below did before
 }
+    
 
