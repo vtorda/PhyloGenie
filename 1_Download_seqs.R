@@ -64,13 +64,13 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir) {
                            rettype="fasta", retmax=50, retstart=seq_start[j]-1)
       cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
       if(j < batch_n){
-        cat("\n",seq_start[j]+49, "sequences downloaded\r")
+        cat("\n",seq_start[j]+49, "sequences downloaded\n")
       }else{
-        cat("\n", max_seq, "sequences downloaded\r")
+        cat("\n", max_seq, "sequences downloaded\n")
       }
     }
     # write out metadata
-    write.table(x = meta_df, file = paste0(path_to_output_dir, search_term, ".metadata"),
+    write.table(x = meta_df, file = paste0(path_to_output_dir, search_term, ".metadata.tsv"),
                 quote = FALSE, col.names = TRUE, row.names = FALSE, sep = "\t")
   }else{
     warning("No taxon ID was found")
