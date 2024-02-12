@@ -60,8 +60,8 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir) {
     seq_start <- seq(1,max_seq,50)
     batch_n <- length(seq_start)
     for(j in 1:batch_n){
-      recs <- entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
-                           rettype="fasta", retmax=50, retstart=seq_start[j]-1)
+      recs <- rentrez::entrez_fetch(db="nuccore", web_history=link_history$web_histories$taxonomy_nuccore,
+                           rettype="fasta", retmax=50, retstart=seq_start[j]-1) # if restez package is loaded need to define rentrez package here
       cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
       if(j < batch_n){
         cat("\n",seq_start[j]+49, "sequences downloaded\n")

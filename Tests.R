@@ -1,14 +1,16 @@
 # Tests of scripts can run in a separate file
 ###
 # setting up R
-source("../RSetup.R")
+source("./RSetup.R")
 package.setup(workingdir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
 #######
 #### 1_Download_seqs.R aka single_attempt_NCBI_seq_search
 #######
 source("../1_Download_seqs.R")
 # TEST THE FUNCTION WITH A SMALL GENUS
-single_attempt_NCBI_seq_search(search_term = "Glaziella", api_key = NULL, path_to_output_dir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
+NCBI_seq_fetch(search_term = "Otidea",
+               api_key = "ce946cc5385e86927f230c4aea4a5f68ac08",
+               path_to_output_dir = "/Users/varga/OneDrive/Documents/GitHub/PhyloGenie/TestFolder/")
 list.files(".")
 Glaziella_fasta <- read.fasta("./Glaziella_available_seqs.fasta")
 
