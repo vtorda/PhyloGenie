@@ -4,6 +4,10 @@
 # This script downloads all available sequence data for a given list of genera. (not including metadata, that's another script, but these scripts could maybe be combined to save time!)
 
 # I found searching by genus easier & more effective than searching by species.
+####
+## BUG at the entrez_link step that happens occationally
+# Error in curl::curl_fetch_memory(url, handle = handle) : 
+# transfer closed with outstanding read data remaining
 
 ###
 ## ToDO
@@ -12,18 +16,20 @@
 # Inputs required:
 ## Personal API key (increases your e-utils limit to 10 requests/second)
 ## List of genera (I used csv file)
+# path_to_output_dir <- "C:/Users/tva10kg/OneDrive - The Royal Botanic Gardens, Kew/Documents/GitHub/PhyloGenie/TestFolder/"
 # source("RSetup.R")
-# package.setup(workingdir = "")
-# search_term <- "Otidea"
-# api_key <- ""
-# path_to_output_dir <- ""
+# package.setup(workingdir = path_to_output_dir)
+# search_term <- "Peziza"
+#api_key <- "ce946cc5385e86927f230c4aea4a5f68ac08"
 # minlength <- 150
 # maxlength <- 5000
 # TechFilter <- c("wgs", "targeted", "tsa", "est")
+# chunk <- 200
 #entrez_db_searchable("taxonomy")
 # ADD FUNCTION TO ENVIRONMENT
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
+
 NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minlength = 100, maxlength = 4000, TechFilter = NULL, chunk = 200) {
   # set api key within the function
   if(!is.null(api_key)){
@@ -47,7 +53,9 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     # get the info of all linked nuccore records
     summary_result <- entrez_summary("nuccore", 
                                      web_history = link_history$web_histories$taxonomy_nuccore, retmode = "xml")
-    meta <- lapply(summary_result, function(x) x[1:27]) # it seems that the first 27 element always the same info
+    # take out the following fields:
+    fields <- c("Caption", "Title", "Extra", "Gi", "CreateDate", "UpdateDate", "Flags", "TaxId", "Slen", "Biomol", "MolType", "Topology", "SourceDb", "SegSetSize", "ProjectId", "Genome", "SubType", "SubName", "AssemblyGi", "AssemblyAcc", "Tech", "Completeness", "GeneticCode", "Strand", "Organism", "Strain", "BioSample")
+    meta <- lapply(summary_result, function(x) x[fields]) # it seems that the first 27 elements always hold the same info
     #changing NULL to NA https://stackoverflow.com/questions/22870198/is-there-a-more-efficient-way-to-replace-null-with-na-in-a-list
     nullToNA <- function(x) {
       x[sapply(x, is.null)] <- NA
@@ -57,8 +65,9 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     meta3 <- lapply(meta2, unlist) 
     meta_df <- as.data.frame(do.call(rbind, meta3))
     # filter out sequences
-    idx <- (as.numeric(meta_df$Slen) <= maxlength & as.numeric(meta_df$Slen) >= minlength)
+    idx <- (as.numeric(meta_df$Slen) <= maxlength & as.numeric(meta_df$Slen) >= minlength) # sequence length filter: is sequence length info always included?
     meta_keep <- meta_df[idx, ]
+    # Technology term filter
     if(!is.null(TechFilter)){
       idx <- meta_keep$Tech %in% TechFilter
       meta_keep <- meta_keep[!idx,]
@@ -123,7 +132,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     for(i in 1:length(feature)){
       n <- unlist(feature[[i]])
       names(n) <- names(feature[[i]])
-      n2 <- n[match(extra_info, names(n))] # with this I expand the vector to the sice of extra_info, NA will be for no matches
+      n2 <- n[match(extra_info, names(n))] # with this I expand the vector to the size of extra_info, NA will be for no matches
       # names(n2) <- extra_info
       all_info <- rbind(all_info, n2)
     }
@@ -131,10 +140,12 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     colnames(all_info) <- extra_info
     all_info2 <- as.data.frame(all_info)
     all_info2$accession_no <- unlist(acc)
+    # extra attempt to download sequences if it wasn't successful until this point.
+    
     if(nrow(meta_keep) == nrow(all_info2)){
       df2 <- cbind(meta_keep, all_info2)
     }else{
-      cat("You couldn't download all the sequences, try to increase the chunk size")
+      cat("Something is still wrong with downloading the sequences...")
     }
 
     write.table(x = df2, file = paste0(path_to_output_dir, search_term, ".metadata.tsv"),
