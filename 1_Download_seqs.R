@@ -30,13 +30,29 @@
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
 
-NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minlength = 100, maxlength = 4000, TechFilter = NULL, chunk = 200) {
+#Show API warning message immediately, instead of after function has already run
+options(warn = 1)
+
+NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minlength = 100, maxlength = 4000, TechFilter = NULL, chunk = 200, force = FALSE) {
+
+  # add trailing slash to path in case the user does not provide it
+  path_to_output_dir <- paste0(path_to_output_dir, "/")
+  
   # set api key within the function
   if(!is.null(api_key)){
     set_entrez_key(api_key)
   }else{
     warning("Request an API key by registering NCBI to get a faster download!")
   }
+  # flag existing fasta file
+  if(file.exists(paste0(path_to_output_dir, search_term, ".fasta")) && force == FALSE){
+    stop(paste0(path_to_output_dir, search_term, ".fasta already exists, add force = TRUE if you would like to overwrite"))
+  }
+  if(file.exists(paste0(path_to_output_dir, search_term, ".fasta")) && force == TRUE){
+    cat(paste0("\nRemoving existing fasta file, ", paste0(path_to_output_dir, search_term, ".fasta\n")))
+    file.remove(paste0(path_to_output_dir, search_term, ".fasta"))
+  }
+  
   r_search <- entrez_search(db = "taxonomy", 
                             term = paste0(search_term, "[subtree]"),
                             retmax = 999, 
@@ -79,7 +95,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
       cat(nrow(meta_dropped), " number of sequences were filtered out. The metadata of these sequences can be found in the \n",
           paste0(path_to_output_dir, search_term, ".metadata.skipped.tsv"),"\n File\n")
     }else{
-      cat("No sequences were filtered out")
+      cat("No sequences were filtered out\n")
     }
     # download sequences in batches and fetch extra meta info
     
@@ -88,7 +104,10 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     seq_start <- seq(1,max_seq,chunk)
     batch_n <- length(seq_start)
     gb_info_list <- list()
+    
     cat("\nDownloading ", max_seq, " number of sequences and their metadata has been started\n")
+    seq_counter <- 0
+    seq_captions <- list()
     for(j in 1:batch_n){
       if(j != batch_n){
         upload <- entrez_post(db = "nuccore",
@@ -103,6 +122,8 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
                                       rettype="fasta") # if restez package is loaded need to define rentrez package here
         cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
         cat("\n",seq_start[j]+chunk-1, "specimens info has been fetched\n")
+        seq_counter <- seq_counter + lengths(regmatches(recs, gregexpr(">", recs)))
+        seq_captions[[j]] <- sub(" .*", "", unlist(strsplit(recs, ">")))
       }
       if(j == batch_n){
         final_add <- max_seq - seq_start[j]
@@ -117,7 +138,9 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
                                       web_history=upload,
                                       rettype="fasta") # if restez package is loaded need to define rentrez package here
         cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
-        cat("\n", max_seq, "specimens info has been fetched\n")
+        seq_counter <- seq_counter + lengths(regmatches(recs, gregexpr(">", recs)))
+        seq_captions[[j]] <- sub(" .*", "", unlist(strsplit(recs, ">")))
+        cat("\n", seq_counter, "specimens info has been fetched\n")
       }
     }
     
@@ -145,7 +168,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     if(nrow(meta_keep) == nrow(all_info2)){
       df2 <- cbind(meta_keep, all_info2)
     }else{
-      cat("Something is still wrong with downloading the sequences...")
+      cat("Something is still wrong with downloading the sequences...\n")
     }
 
     write.table(x = df2, file = paste0(path_to_output_dir, search_term, ".metadata.tsv"),
