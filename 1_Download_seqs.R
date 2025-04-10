@@ -30,13 +30,29 @@
 # This function outputs a FASTA file with all the available sequences in NCBI for your search term.
 # Set 'path_to_output_dir' (above) as the place you want your file to go
 
-NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minlength = 100, maxlength = 4000, TechFilter = NULL, chunk = 200) {
+#Show API warning message immediately, instead of after function has already run
+options(warn = 1)
+
+NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minlength = 100, maxlength = 4000, TechFilter = NULL, chunk = 200, force = FALSE) {
+
+  # add trailing slash to path in case the user does not provide it
+  path_to_output_dir <- paste0(path_to_output_dir, "/")
+  
   # set api key within the function
   if(!is.null(api_key)){
     set_entrez_key(api_key)
   }else{
     warning("Request an API key by registering NCBI to get a faster download!")
   }
+  # flag existing fasta file
+  if(file.exists(paste0(path_to_output_dir, search_term, ".fasta")) && force == FALSE){
+    stop(paste0(path_to_output_dir, search_term, ".fasta already exists, add force = TRUE if you would like to overwrite"))
+  }
+  if(file.exists(paste0(path_to_output_dir, search_term, ".fasta")) && force == TRUE){
+    cat(paste0("\nRemoving existing fasta file, ", paste0(path_to_output_dir, search_term, ".fasta\n")))
+    file.remove(paste0(path_to_output_dir, search_term, ".fasta"))
+  }
+  
   r_search <- entrez_search(db = "taxonomy", 
                             term = paste0(search_term, "[subtree]"),
                             retmax = 999, 
@@ -79,7 +95,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
       cat(nrow(meta_dropped), " number of sequences were filtered out. The metadata of these sequences can be found in the \n",
           paste0(path_to_output_dir, search_term, ".metadata.skipped.tsv"),"\n File\n")
     }else{
-      cat("No sequences were filtered out")
+      cat("No sequences were filtered out\n")
     }
     # download sequences in batches and fetch extra meta info
     
@@ -145,7 +161,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     if(nrow(meta_keep) == nrow(all_info2)){
       df2 <- cbind(meta_keep, all_info2)
     }else{
-      cat("Something is still wrong with downloading the sequences...")
+      cat("Something is still wrong with downloading the sequences...\n")
     }
 
     write.table(x = df2, file = paste0(path_to_output_dir, search_term, ".metadata.tsv"),
