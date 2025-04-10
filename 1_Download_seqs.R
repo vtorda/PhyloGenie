@@ -104,10 +104,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
     seq_start <- seq(1,max_seq,chunk)
     batch_n <- length(seq_start)
     gb_info_list <- list()
-    
     cat("\nDownloading ", max_seq, " number of sequences and their metadata has been started\n")
-    seq_counter <- 0
-    seq_captions <- list()
     for(j in 1:batch_n){
       if(j != batch_n){
         upload <- entrez_post(db = "nuccore",
@@ -122,8 +119,6 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
                                       rettype="fasta") # if restez package is loaded need to define rentrez package here
         cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
         cat("\n",seq_start[j]+chunk-1, "specimens info has been fetched\n")
-        seq_counter <- seq_counter + lengths(regmatches(recs, gregexpr(">", recs)))
-        seq_captions[[j]] <- sub(" .*", "", unlist(strsplit(recs, ">")))
       }
       if(j == batch_n){
         final_add <- max_seq - seq_start[j]
@@ -138,9 +133,7 @@ NCBI_seq_fetch <- function(search_term, api_key = NULL, path_to_output_dir, minl
                                       web_history=upload,
                                       rettype="fasta") # if restez package is loaded need to define rentrez package here
         cat(recs, file=paste0(path_to_output_dir, search_term, ".fasta"), append=TRUE)
-        seq_counter <- seq_counter + lengths(regmatches(recs, gregexpr(">", recs)))
-        seq_captions[[j]] <- sub(" .*", "", unlist(strsplit(recs, ">")))
-        cat("\n", seq_counter, "specimens info has been fetched\n")
+        cat("\n", max_seq, "specimens info has been fetched\n")
       }
     }
     
